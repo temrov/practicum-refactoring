@@ -1,6 +1,10 @@
 import Foundation
 
-class Rectangle {
+protocol Figure {
+    func area() ->Int
+}
+
+class Rectangle: Figure {
     var width: Int
     var height: Int
 
@@ -14,16 +18,20 @@ class Rectangle {
     }
 }
 
-class Square: Rectangle {
-    override var width: Int {
-        didSet {
-            super.height = width
-        }
+class Square: Figure {
+    init(side: Int) {
+        self.side = side
     }
+    var side: Int
 
-    override var height: Int {
-        didSet {
-            super.width = height
-        }
+    func area() -> Int {
+        side * side
     }
 }
+
+let rect: Rectangle = Rectangle(width: 2, height: 4)
+//print("\(rect.area())") // 8
+
+var square: Rectangle = Square(side: 3) // 3 на 3
+square.height = 4 // 3 на 4
+//print("\(square.area())") // 16

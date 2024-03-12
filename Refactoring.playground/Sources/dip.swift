@@ -14,21 +14,32 @@ class Cat {
     }
 }
 
+protocol AnimalSoundable {
+    func makeNoise()
+}
+
 // High-level class: AnimalSoundMaker
 class AnimalSoundMaker {
-    let dog: Dog
-    let cat: Cat
+    let animal: AnimalSoundable
 
-    init(dog: Dog, cat: Cat) {
-        self.dog = dog
-        self.cat = cat
+    init(animal: AnimalSoundable) {
+        self.animal = animal
     }
 
-    func makeDogSound() {
-        dog.bark()
+    func noise() {
+        animal.makeNoise()
     }
 
-    func makeCatSound() {
-        cat.meow()
+}
+
+extension Cat: AnimalSoundable {
+    func makeNoise() {
+        meow()
+    }
+}
+
+extension Dog: AnimalSoundable {
+    func makeNoise() {
+        bark()
     }
 }

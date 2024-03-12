@@ -3,6 +3,7 @@
 import PlaygroundSupport
 import Foundation
 import UIKit
+import Combine
 
 struct User {
     let id: String
@@ -11,91 +12,86 @@ struct User {
     let avatar: String?
 }
 
+protocol UserProvider {
+    func updateUser(id: String, name: String, password: String, avatarUrl: String?, bio: String?, competion: @escaping (User?, Error?)->Void)
+}
+
+protocol ImageUploader {
+    func uploadImage(fileName: String, image: UIImage, completion: @escaping ([String: Any]?, Error?)->Void)
+}
+
+
+
+struct UserRegistrationInfo {
+    let name
+    let password
+    //...
+
+}
 
 class AuthService {
 
-    var currentUser: User?
+    init(userProvider: UserProvider, imageUploader: ImageUploader) {
+        self.userProvider = userProvider
+        self.imageUploader = imageUploader
+    }
+
+    let userProvider: UserProvider
+    let imageUploader: ImageUploader
+    private var currentUser: CurrentValueSubject<User?, Never>(nil)
+
+    var currentUserPublisher: AnyPublisher<User?, Never> {
+        currentUser.eraseToAnyPublisher()
+    }
 
     func registerUser(name: String, password: String, avatar: UIImage?, bio: String?, completion: @escaping(Error?)->Void) {
-        let urlSession = URLSession.shared
         let userId = UUID().uuidString
 
+        let updateUser: (String?)->Void  = { [weak self] avatar in
+            self?.userProvider.updateUser(id: userId, name: name, password: password, avatarUrl: avatar, bio: buio, competion: { user, error in
+                guard let user else {
+                    completion(error ?? NSError())
+                    return
+                }
+                self?.currentUser.send(user)
+                completion(nil)
+
+            })
+        }
+
         if let avatar {
-            let url = URL(string: "http://api-host-name/v1/api/uploadfile/single")
-
-            // generate boundary string using a unique per-app string
-            let boundary = UUID().uuidString
-
-            // Set the URLRequest to POST and to the specified URL
-            var urlRequest = URLRequest(url: url!)
-            urlRequest.httpMethod = "POST"
-
-            // Set Content-Type Header to multipart/form-data, 
-            // this is equivalent to submitting form data with file upload in a web browser
-            // And the boundary is also set here
-            urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-            var data = Data()
-
-            // Add the image data to the raw http request data
-            data.append("\r\n--\(boundary)\r\n".data(using: .utf8)!)
-            data.append("Content-Disposition: form-data; filename=\"avatar/\(userId)\"\r\n".data(using: .utf8)!)
-            data.append("Content-Type: image/png\r\n\r\n".data(using: .utf8)!)
-            data.append(avatar.pngData()!)
-            data.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-
-            // Send a POST request to the URL, with the data we created earlier
-            urlSession.uploadTask(with: urlRequest, from: data, completionHandler: { responseData, response, error in
+            uploadImage(fileName: "avatar/\(userId)\"", image: avatar) { jsonData, error in
                 guard error == nil,
-                      let responseData,
-                        let jsonData = try? JSONSerialization.jsonObject(with: responseData, options: .allowFragments),
                         let json = jsonData as? [String: Any] else {
                     completion(error ?? NSError(domain: "Service", code: 1))
                     return
                 }
                 let avatarUrl = json["avatar"] as? String
-                let url = URL(string: "https://some-user-service/1/")!
-                var urlRequest = URLRequest(url: url)
-                urlRequest.httpMethod = "POST"
-                var params: [String: Any] = ["name": name,
-                                             "password": password,
-                                             "id": userId]
-                params["avatar"] = avatarUrl
-                params["bio"] = bio
-                urlRequest.httpBody = try? JSONSerialization.data(withJSONObject: params)
-                urlSession.dataTask(with: urlRequest) { [weak self] userIdData, _, error in
-                    guard let userIdData, let userId = String(data: userIdData, encoding: .utf8), error == nil else {
-                        completion(error)
-                        return
-                    }
-                    self?.currentUser = User(id: userId, name: name, bio: bio, avatar: avatarUrl)
-                    completion(nil)
-                    NotificationCenter.default.post(name: NSNotification.Name(rawValue: "user_registered"), object: nil, userInfo: ["user": self!.currentUser!])
-                }
-            }).resume()
-
-        } else {
-            let url = URL(string: "https://some-user-service/1/")!
-            var urlRequest = URLRequest(url: url)
-            urlRequest.httpMethod = "POST"
-            var params: [String: Any] = ["name": name,
-                                         "password": password,
-                                         "id": userId]
-            params["bio"] = bio
-            urlRequest.httpBody = try? JSONSerialization.data(withJSONObject: params)
-            urlSession.dataTask(with: urlRequest) { [weak self] userIdData, _, error in
-                guard let userIdData, let userId = String(data: userIdData, encoding: .utf8), error == nil else {
-                    completion(error)
-                    return
-                }
-                self?.currentUser = User(id: userId, name: name, bio: bio, avatar: nil)
-                completion(nil)
-                NotificationCenter.default.post(name: NSNotification.Name(rawValue: "user_registered"), object: nil, userInfo: ["user": self!.currentUser!])
-                completion(nil)
+                updateUser(avatar)
             }
+        } else {
+            updateUser(nil)
         }
 
     }
 
+    private func uploadImage(fileName: String, image: UIImage, completion: @escaping ([String: Any]?, Error?)->Void) {
+        imageUploader.uploadImage(fileName: fileName, image: image, completion: completion)
+    }
+
 
 }
+
+fileprivate extension String {
+    static let avatarUrl = "http://api-host-name/v1/api/uploadfile/single"
+    static let registrationUrl = "https://some-user-service/1/"
+}
+
+let authService = AuthService(userProvider: <#T##UserProvider#>, imageUploader: <#T##ImageUploader#>)
+
+authService.currentUserPublisher.sink { _ in
+
+} receiveValue: { newValue in
+    // операции с зарегестрированным пользователем
+}
+
